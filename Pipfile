@@ -10,6 +10,9 @@ scikit-learn = "*"
 joblib = "*"
 matplotlib = "*"
 mplcursors = "*"
+streamlit = "*"
+xgboost = "*"
+pathlib = "*"
 
 [dev-packages]
 
