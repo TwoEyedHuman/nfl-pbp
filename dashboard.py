@@ -5,6 +5,7 @@ import numpy as np
 import joblib
 import streamlit as st
 from pathlib import Path
+import matplotlib.ticker as mtick  # Add this import
 
 # --- Page Config ---
 st.set_page_config(page_title="NFL Win Probability Tracker", layout="wide")
@@ -34,11 +35,6 @@ wp_model = load_selected_model(selected_model_name)
 st.sidebar.divider() # Visual separation
 st.sidebar.header("Select Game")
 
-# wp_model = load_model()
-
-# --- Sidebar Selectors ---
-st.sidebar.header("Select Game")
-
 # 1. Select Year
 selected_year = st.sidebar.selectbox("Year", options=range(2023, 2019, -1))
 
@@ -63,6 +59,7 @@ team_games = year_data[
 # Create a readable label for the dropdown
 team_games['game_label'] = team_games['game_id'] + " (" + team_games['away_team'] + " @ " + team_games['home_team'] + ")"
 game_options = team_games['game_label'].unique()
+
 selected_game_label = st.sidebar.selectbox("Game", options=game_options)
 
 # Extract the actual game_id
@@ -70,6 +67,29 @@ selected_game_id = selected_game_label.split(" (")[0]
 
 # --- Processing ---
 game_df = year_data[year_data['game_id'] == selected_game_id].copy()
+
+@st.cache_data
+def get_team_map():
+    teams = nfl.import_team_desc()
+    return dict(zip(teams['team_abbr'], teams['team_nick']))
+
+team_map = get_team_map()
+
+week = int(game_df['week'].iloc[0])
+home_abbr = game_df['home_team'].iloc[0]
+away_abbr = game_df['away_team'].iloc[0]
+
+if selected_team == home_abbr:
+    opponent_abbr = away_abbr
+    vs_text = "v"
+else:
+    opponent_abbr = home_abbr
+    vs_text = "@"
+
+selected_nick = team_map.get(selected_team, selected_team)
+opponent_nick = team_map.get(opponent_abbr, opponent_abbr)
+
+clean_title = f"{selected_nick} Win Probability - Week {week}, {selected_year} {vs_text} {opponent_nick}"
 
 # Feature Engineering
 game_df['score_diff'] = np.where(
@@ -101,14 +121,20 @@ ax.fill_between(graph_df['game_seconds_remaining'], 0.5, graph_df['team_wp'],
 ax.fill_between(graph_df['game_seconds_remaining'], 0.5, graph_df['team_wp'], 
                 where=(graph_df['team_wp'] < 0.5), color='red', alpha=0.1)
 
-ax.invert_xaxis()
-ax.axhline(0.5, color='black', linestyle='--', alpha=0.5)
-ax.set_title(f"{selected_team} Win Probability vs {selected_game_id}", fontsize=16)
-ax.set_ylabel(f"{selected_team} Win %")
-ax.set_xlabel("Seconds Remaining")
-plt.grid(alpha=0.3)
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0, decimals=0))
+ax.set_ylim(0, 1)
 
-# Display in Streamlit
+ax.invert_xaxis()
+quarter_ticks = [3600, 2700, 1800, 900, 0]
+quarter_labels = ['Start', 'End Q1', 'Half', 'End Q3', 'Final']
+ax.set_xticks(quarter_ticks)
+ax.set_xticklabels(quarter_labels)
+ax.grid(True, axis='x', linestyle='--', alpha=0.5) 
+ax.grid(False, axis='y') # Optional: hides horizontal grid lines for a cleaner look
+
+ax.axhline(0.5, color='black', linestyle='-', alpha=0.3)
+ax.set_title(clean_title, fontsize=16, pad=20)
+ax.set_ylabel("Win Probability", fontsize=14)
 st.pyplot(fig)
 
 # Show Play-by-Play Table
