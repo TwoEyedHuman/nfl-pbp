@@ -6,7 +6,7 @@ import joblib
 
 cols = ['game_id', 'posteam', 'home_team', 'away_team', 'total_home_score', 
         'total_away_score', 'game_seconds_remaining', 'down', 'ydstogo', 'yardline_100', 'result']
-pbp = nfl.import_pbp_data([2023], columns=cols)
+pbp = nfl.import_pbp_data([2020,2021,2022,2023], columns=cols)
 
 # 2. Data Cleaning
 # Remove kickoffs, timeouts, and end of quarters (only keep plays with a 'down')
@@ -33,6 +33,6 @@ y = pbp['posteam_win']
 wp_model = GradientBoostingClassifier()
 wp_model.fit(X, y)
 
-print("Model Trained on 2023 Season Data!")
+print("Model Trained!")
 
 joblib.dump(wp_model, 'xgboost_wp.pkl')
