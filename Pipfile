@@ -13,6 +13,8 @@ mplcursors = "*"
 streamlit = "*"
 xgboost = "*"
 pathlib = "*"
+plotly = "*"
+nflreadpy = "*"
 
 [dev-packages]
 

@@ -1,11 +1,10 @@
 import nfl_data_py as nfl
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
 import joblib
 import streamlit as st
 from pathlib import Path
-import matplotlib.ticker as mtick  # Add this import
+import plotly.express as px
 
 # --- Page Config ---
 st.set_page_config(page_title="NFL Win Probability Tracker", layout="wide")
@@ -39,7 +38,7 @@ st.sidebar.header("Select Game")
 selected_year = st.sidebar.selectbox("Year", options=range(2023, 2019, -1))
 
 # 2. Fetch Data (Cached to avoid re-downloading on every click)
-@st.cache_data
+@st.cache_data(persist="disk")
 def get_year_data(year):
     return nfl.import_pbp_data([year])
 
@@ -68,7 +67,7 @@ selected_game_id = selected_game_label.split(" (")[0]
 # --- Processing ---
 game_df = year_data[year_data['game_id'] == selected_game_id].copy()
 
-@st.cache_data
+@st.cache_data(persist="disk")
 def get_team_map():
     teams = nfl.import_team_desc()
     return dict(zip(teams['team_abbr'], teams['team_nick']))
@@ -112,30 +111,58 @@ graph_df['team_wp'] = np.where(
     1 - graph_df['possession_wp']
 )
 
-# --- Visualization ---
-fig, ax = plt.subplots(figsize=(12, 6))
+@st.cache_data
+def get_team_colors_map():
+    teams = nfl.import_team_desc()
+    # Create a dictionary mapping abbreviation to a dictionary of colors
+    return teams.set_index('team_abbr')[['team_color', 'team_color2']].to_dict('index')
 
-ax.plot(graph_df['game_seconds_remaining'], graph_df['team_wp'], color="#247CE1", linewidth=2)
-ax.fill_between(graph_df['game_seconds_remaining'], 0.5, graph_df['team_wp'], 
-                where=(graph_df['team_wp'] >= 0.5), color='green', alpha=0.1)
-ax.fill_between(graph_df['game_seconds_remaining'], 0.5, graph_df['team_wp'], 
-                where=(graph_df['team_wp'] < 0.5), color='red', alpha=0.1)
+all_team_colors = get_team_colors_map()
+primary_color = all_team_colors.get(selected_team, {}).get('team_color', '#247CE1')
+secondary_color = all_team_colors.get(selected_team, {}).get('team_color2', '#FFFFFF')
 
-ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0, decimals=0))
-ax.set_ylim(0, 1)
+def hex_to_rgba(hex_code, opacity=0.1):
+    hex_code = hex_code.lstrip('#')
+    lv = len(hex_code)
+    rgb = tuple(int(hex_code[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
+    return f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {opacity})'
 
-ax.invert_xaxis()
-quarter_ticks = [3600, 2700, 1800, 900, 0]
-quarter_labels = ['Start', 'End Q1', 'Half', 'End Q3', 'Final']
-ax.set_xticks(quarter_ticks)
-ax.set_xticklabels(quarter_labels)
-ax.grid(True, axis='x', linestyle='--', alpha=0.5) 
-ax.grid(False, axis='y') # Optional: hides horizontal grid lines for a cleaner look
+bg_color = hex_to_rgba(secondary_color, opacity=0.15)
 
-ax.axhline(0.5, color='black', linestyle='-', alpha=0.3)
-ax.set_title(clean_title, fontsize=16, pad=20)
-ax.set_ylabel("Win Probability", fontsize=14)
-st.pyplot(fig)
+# --- Interactive Visualization with Plotly ---
+# Create the interactive line chart
+fig = px.line(
+    graph_df, 
+    x='game_seconds_remaining', 
+    y='team_wp',
+    title=clean_title,
+    custom_data=['desc']
+)
+
+fig.update_traces(
+    line=dict(color=primary_color, width=4),
+    hovertemplate="%{customdata[0]}<extra></extra>")
+
+fig.update_layout(
+    xaxis_title="",
+    yaxis_title="",
+    yaxis_tickformat='.0%',
+    yaxis_range=[0, 1],
+    plot_bgcolor=bg_color,
+    xaxis=dict(
+        tickmode='array',
+        tickvals=[3600, 2700, 1800, 900, 0],
+        ticktext=['Start', 'End Q1', 'Half', 'End Q3', 'Final'],
+        autorange="reversed"
+    ),
+    hovermode="closest"
+)
+
+# Add the 50% baseline
+fig.add_hline(y=0.5, line_dash="dash", line_color="gray", opacity=0.5)
+
+# Display in Streamlit
+st.plotly_chart(fig, width='stretch')
 
 # Show Play-by-Play Table
 st.subheader("Play-by-Play Details")
