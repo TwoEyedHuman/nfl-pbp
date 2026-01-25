@@ -1,4 +1,3 @@
-import nflreadpy as nfl  # Migrated from nfl_data_py
 import pandas as pd
 import numpy as np
 import joblib
@@ -6,151 +5,137 @@ import streamlit as st
 from pathlib import Path
 import plotly.express as px
 
+# Import both services
+from data_provider.service_nflreadpy import fetch_nfl_data
+from data_provider.service_espnapi import fetch_espn_pbp, get_scoreboard
+
 # --- Page Config ---
 st.set_page_config(page_title="NFL Win Probability Tracker", layout="wide")
 st.title("🏈 NFL Play-by-Play Win Probability")
 
 # --- Model Selection Logic ---
 def get_available_models(model_dir="models"):
-    """Scans the models folder for .pkl files."""
     path = Path(model_dir)
-    if not path.exists():
-        return ["xgboost_wp.pkl"] 
+    if not path.exists(): return ["xgboost_wp.pkl"] 
     return [f.name for f in path.glob("*.pkl")]
 
 @st.cache_resource
 def load_selected_model(model_name):
     return joblib.load(f'models/{model_name}')
 
-# --- Sidebar Selectors ---
-st.sidebar.header("Settings")
-
-available_models = get_available_models()
-selected_model_name = st.sidebar.selectbox("Select Model", options=available_models)
+# --- Sidebar: Settings ---
+st.sidebar.header("Global Settings")
+selected_model_name = st.sidebar.selectbox("Select Model", options=get_available_models())
 wp_model = load_selected_model(selected_model_name)
 
-st.sidebar.divider() 
-st.sidebar.header("Select Game")
+st.sidebar.divider()
+st.sidebar.header("Data Source")
+data_source = st.sidebar.radio("Select Source", ["NFLReadPy (Historical)", "ESPN API (Live/Recent)"])
 
-selected_year = st.sidebar.selectbox("Year", options=range(2025, 2019, -1))
+# --- Logic: Handle Source-Specific Selectors ---
+pbp_struct = None
 
-# --- Data Fetching (nflreadypy) ---
-@st.cache_data(persist="disk")
-def get_year_data(year):
-    return nfl.load_pbp(year).to_pandas()
+if data_source == "NFLReadPy (Historical)":
+    selected_year = st.sidebar.selectbox("Year", options=range(2025, 2019, -1))
+    
+    @st.cache_data
+    def get_cached_nfl_pbp(year):
+        return fetch_nfl_data(year)
+    
+    with st.spinner("Fetching NFLReadPy Data..."):
+        pbp_struct = get_cached_nfl_pbp(selected_year)
 
-with st.spinner(f"Loading {selected_year} data..."):
-    year_data = get_year_data(selected_year)
-
-# 3. Select Team
-all_teams = sorted(year_data['home_team'].unique())
-selected_team = st.sidebar.selectbox("Team", options=all_teams)
-
-# 4. Select Game
-team_games = year_data[
-    (year_data['home_team'] == selected_team) | 
-    (year_data['away_team'] == selected_team)
-].copy()
-
-team_games['game_label'] = team_games['game_id'] + " (" + team_games['away_team'] + " @ " + team_games['home_team'] + ")"
-game_options = team_games['game_label'].unique()
-selected_game_label = st.sidebar.selectbox("Game", options=game_options)
-selected_game_id = selected_game_label.split(" (")[0]
-
-# --- Processing ---
-game_df = year_data[year_data['game_id'] == selected_game_id].copy()
-
-@st.cache_data(persist="disk")
-def get_team_map():
-    teams = nfl.load_teams().to_pandas()
-    return dict(zip(teams['team_abbr'], teams['team_nick']))
-
-team_map = get_team_map()
-
-week = int(game_df['week'].iloc[0]) if not pd.isna(game_df['week'].iloc[0]) else 0
-home_abbr = game_df['home_team'].iloc[0]
-away_abbr = game_df['away_team'].iloc[0]
-
-if selected_team == home_abbr:
-    opponent_abbr = away_abbr
-    vs_text = "v"
 else:
-    opponent_abbr = home_abbr
-    vs_text = "@"
+    # # ESPN Source Logic
+    # col1, col2 = st.sidebar.columns(2)
+    # with col1:
+    #     e_year = st.selectbox("Year", options=[2025, 2024], index=0)
+    # with col2:
+    #     e_week = st.selectbox("Week", options=range(1, 19), index=0)
+        
+    @st.cache_data
+    def get_cached_espn_scoreboard():
+        return get_scoreboard()
 
-selected_nick = team_map.get(selected_team, selected_team)
-opponent_nick = team_map.get(opponent_abbr, opponent_abbr)
+    games = get_cached_espn_scoreboard()
+    selected_game = st.sidebar.selectbox(
+        "Select Game", 
+        options=games, 
+        format_func=lambda x: x['name']
+    )
 
-clean_title = f"{selected_nick} Win Probability - Week {week}, {selected_year} {vs_text} {opponent_nick}"
+    if selected_game:
+        with st.spinner("Fetching ESPN Live Data..."):
+            pbp_struct = fetch_espn_pbp(selected_game['id'])
 
-# Feature Engineering
-game_df['score_diff'] = np.where(
-    game_df['posteam'] == game_df['home_team'],
-    game_df['total_home_score'] - game_df['total_away_score'],
-    game_df['total_away_score'] - game_df['total_home_score']
-)
+# --- Main App Logic (Shared for both sources) ---
+if pbp_struct:
+    year_data = pbp_struct.raw_df
+    team_map = pbp_struct.team_map
+    all_team_colors = pbp_struct.color_map
 
-# Clean for graph
-graph_df = game_df.dropna(subset=['down']).copy()
-features = ['game_seconds_remaining', 'down', 'ydstogo', 'yardline_100', 'score_diff']
+    # 1. Select Team
+    # Handle cases where year_data might be empty or missing columns
+    if 'posteam' not in year_data.columns and 'home_team' in year_data.columns:
+         # Some ESPN games might need posteam derived if not in raw_df
+         pass 
 
-# Run Inference
-graph_df['possession_wp'] = wp_model.predict_proba(graph_df[features])[:, 1]
+    all_teams = sorted(year_data['home_team'].unique())
+    selected_team = st.sidebar.selectbox("Team", options=all_teams)
 
-# Calculate WP for the SELECTED team specifically
-graph_df['team_wp'] = np.where(
-    graph_df['posteam'] == selected_team,
-    graph_df['possession_wp'],
-    1 - graph_df['possession_wp']
-)
+    # 2. Filter Game Data
+    # For NFLReadPy, we filter by game_id. For ESPN, we already have the specific game.
+    if data_source == "NFLReadPy (Historical)":
+        team_games = year_data[(year_data['home_team'] == selected_team) | (year_data['away_team'] == selected_team)].copy()
+        team_games['game_label'] = team_games['game_id'] + " (" + team_games['away_team'] + " @ " + team_games['home_team'] + ")"
+        game_options = team_games['game_label'].unique()
+        selected_game_label = st.sidebar.selectbox("Game", options=game_options)
+        selected_game_id = selected_game_label.split(" (")[0]
+        game_df = year_data[year_data['game_id'] == selected_game_id].copy()
+    else:
+        # ESPN data is already game-specific
+        game_df = year_data.copy()
 
-@st.cache_data
-def get_team_colors_map():
-    teams = nfl.load_teams().to_pandas()
-    return teams.set_index('team_abbr')[['team_color', 'team_color2']].to_dict('index')
+    if 'score_diff' not in game_df.columns:
+        st.error("Data source failed to provide 'score_diff'. Check service implementation. Columns: " + ", ".join(game_df.columns))
+        st.stop()
 
-all_team_colors = get_team_colors_map()
-primary_color = all_team_colors.get(selected_team, {}).get('team_color', '#247CE1')
-secondary_color = all_team_colors.get(selected_team, {}).get('team_color2', '#FFFFFF')
+    # Inference Prep
+    graph_df = game_df.dropna(subset=['down', 'posteam', 'score_diff']).copy()
+    features = ['game_seconds_remaining', 'down', 'ydstogo', 'yardline_100', 'score_diff']
+    
+    # Run Prediction
+    graph_df['possession_wp'] = wp_model.predict_proba(graph_df[features])[:, 1]
+    graph_df['team_wp'] = np.where(
+        graph_df['posteam'] == selected_team,
+        graph_df['possession_wp'],
+        1 - graph_df['possession_wp']
+    )
 
-def hex_to_rgba(hex_code, opacity=0.1):
-    hex_code = str(hex_code).lstrip('#')
-    lv = len(hex_code)
-    rgb = tuple(int(hex_code[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
-    return f'rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {opacity})'
+    # --- Visualization ---
+    primary_color = all_team_colors.get(selected_team, {}).get('team_color', '#247CE1')
+    
+    # Text Setup
+    home_abbr = game_df['home_team'].iloc[0] if 'home_team' in game_df.columns else "Home"
+    away_abbr = game_df['away_team'].iloc[0] if 'away_team' in game_df.columns else "Away"
+    vs_text = "v" if selected_team == home_abbr else "@"
+    opponent_abbr = away_abbr if selected_team == home_abbr else home_abbr
+    
+    clean_title = f"{team_map.get(selected_team, selected_team)} Win Probability {vs_text} {team_map.get(opponent_abbr, opponent_abbr)}"
 
-bg_color = hex_to_rgba(secondary_color, opacity=0.15)
+    fig = px.line(graph_df, x='game_seconds_remaining', y='team_wp', title=clean_title, custom_data=['desc'])
+    fig.update_traces(line_color=primary_color, hovertemplate="%{customdata[0]}<extra></extra>")
+    fig.update_layout(
+        yaxis_tickformat='.0%', yaxis_range=[0, 1],
+        xaxis=dict(tickvals=[3600, 2700, 1800, 900, 0], ticktext=['Start', 'Q2', 'Half', 'Q4', 'Final'], autorange="reversed"),
+        hovermode="closest"
+    )
+    fig.add_hline(y=0.5, line_dash="dash", line_color="gray", opacity=0.5)
 
-# --- Interactive Visualization with Plotly ---
-fig = px.line(
-    graph_df, 
-    x='game_seconds_remaining', 
-    y='team_wp',
-    title=clean_title,
-    custom_data=['desc']
-)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Play-by-Play Details")
+    st.dataframe(graph_df[['game_seconds_remaining', 'down', 'ydstogo', 'desc', 'team_wp']].sort_values('game_seconds_remaining', ascending=False))
 
-fig.update_traces(
-    hovertemplate="%{customdata[0]}<extra></extra>")
-
-fig.update_layout(
-    xaxis_title="",
-    yaxis_title="",
-    yaxis_tickformat='.0%',
-    yaxis_range=[0, 1],
-    xaxis=dict(
-        tickmode='array',
-        tickvals=[3600, 2700, 1800, 900, 0],
-        ticktext=['Start', 'End Q1', 'Half', 'End Q3', 'Final'],
-        autorange="reversed"
-    ),
-    hovermode="closest"
-)
-
-fig.add_hline(y=0.5, line_dash="dash", line_color="gray", opacity=0.5)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# Show Play-by-Play Table
-st.subheader("Play-by-Play Details")
-st.dataframe(graph_df[['game_seconds_remaining', 'down', 'ydstogo', 'desc', 'team_wp']].sort_values('game_seconds_remaining', ascending=False))
+else:
+    st.info("Please select a game from the sidebar to view Win Probability.")
