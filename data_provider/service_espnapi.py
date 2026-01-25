@@ -44,14 +44,25 @@ def get_scoreboard() -> List[Dict]:
         })
     return events
 
+# Custom error for game not started
+class GameNotStartedError(Exception):
+    pass
+
 @st.cache_data(ttl=60)
 def fetch_espn_pbp(event_id: str) -> PBPData:
-    """Fetches PBP for a specific event and returns our standard PBPData struct."""
     url = f"{BASE_URL}/summary?event={event_id}"
     response = requests.get(url)
     response.raise_for_status()
     data = response.json()
-    
+
+    # Safely navigate the nested list
+    header = data.get('header', {})
+    competitions = header.get('competitions', [{}])
+    game_status = competitions[0].get('status', {}).get('type', {}).get('name', '')
+
+    if game_status == "STATUS_SCHEDULED":
+        raise GameNotStartedError("The selected game has not started yet.")
+
     # 1. Identify Home Team Metadata first
     # This avoids the NameError by defining home_id before the loop
     competitors = data.get('boxscore', {}).get('teams', [])

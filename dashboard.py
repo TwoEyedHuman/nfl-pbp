@@ -7,11 +7,19 @@ import plotly.express as px
 
 # Import both services
 from data_provider.service_nflreadpy import fetch_nfl_data
-from data_provider.service_espnapi import fetch_espn_pbp, get_scoreboard
+from data_provider.service_espnapi import GameNotStartedError, fetch_espn_pbp, get_scoreboard
 
-# --- Page Config ---
-st.set_page_config(page_title="NFL Win Probability Tracker", layout="wide")
-st.title("🏈 NFL Play-by-Play Win Probability")
+@st.cache_data
+def get_cached_nfl_pbp(year):
+    return fetch_nfl_data(year)
+
+@st.cache_data
+def get_cached_espn_scoreboard():
+    return get_scoreboard()
+
+@st.cache_resource
+def load_selected_model(model_name):
+    return joblib.load(f'models/{model_name}')
 
 # --- Model Selection Logic ---
 def get_available_models(model_dir="models"):
@@ -19,9 +27,9 @@ def get_available_models(model_dir="models"):
     if not path.exists(): return ["xgboost_wp.pkl"] 
     return [f.name for f in path.glob("*.pkl")]
 
-@st.cache_resource
-def load_selected_model(model_name):
-    return joblib.load(f'models/{model_name}')
+# --- Page Config ---
+st.set_page_config(page_title="NFL Win Probability Tracker", layout="wide")
+st.title("🏈 NFL Play-by-Play Win Probability")
 
 # --- Sidebar: Settings ---
 st.sidebar.header("Global Settings")
@@ -38,10 +46,6 @@ pbp_struct = None
 if data_source == "NFLReadPy (Historical)":
     selected_year = st.sidebar.selectbox("Year", options=range(2025, 2019, -1))
     
-    @st.cache_data
-    def get_cached_nfl_pbp(year):
-        return fetch_nfl_data(year)
-    
     with st.spinner("Fetching NFLReadPy Data..."):
         pbp_struct = get_cached_nfl_pbp(selected_year)
 
@@ -52,10 +56,6 @@ else:
     #     e_year = st.selectbox("Year", options=[2025, 2024], index=0)
     # with col2:
     #     e_week = st.selectbox("Week", options=range(1, 19), index=0)
-        
-    @st.cache_data
-    def get_cached_espn_scoreboard():
-        return get_scoreboard()
 
     games = get_cached_espn_scoreboard()
     selected_game = st.sidebar.selectbox(
@@ -66,7 +66,11 @@ else:
 
     if selected_game:
         with st.spinner("Fetching ESPN Live Data..."):
-            pbp_struct = fetch_espn_pbp(selected_game['id'])
+            try:
+                pbp_struct = fetch_espn_pbp(selected_game['id'])
+            except GameNotStartedError as e:
+                st.sidebar.warning(str(e))
+                pbp_struct = None
 
 # --- Main App Logic (Shared for both sources) ---
 if pbp_struct:
