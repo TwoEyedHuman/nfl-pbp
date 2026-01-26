@@ -102,9 +102,9 @@ def fetch_espn_pbp(event_id: str) -> PBPData:
                 'away_score': play.get('awayScore'),
                 'period': play.get('period', {}).get('number'),
                 'game_seconds_remaining': calculate_seconds(play),
-                'down': play.get('start', {}).get('down'),
-                'ydstogo': play.get('start', {}).get('distance'),
-                'yardline_100': play.get('start', {}).get('yardsToEndzone'),
+                'down': play.get('end', {}).get('down'),
+                'ydstogo': play.get('end', {}).get('distance'),
+                'yardline_100': play.get('end', {}).get('yardsToEndzone'),
                 'home_team': home_abbr, # Normalized string
                 'posteam': id_to_abbr.get(posteam_id) # Map ID to Abbr
             }
