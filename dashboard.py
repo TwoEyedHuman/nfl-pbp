@@ -198,14 +198,21 @@ def main():
         fig.update_layout(
             yaxis_tickformat='.0%', yaxis_range=[0, 1],
             xaxis=dict(tickvals=[3600, 2700, 1800, 900, 0], ticktext=['Start', 'Q2', 'Half', 'Q4', 'Final'], autorange="reversed"),
-            hovermode="closest"
+            hovermode="closest",
+            xaxis_title="",
+            yaxis_title=""
         )
         fig.add_hline(y=0.5, line_dash="dash", line_color="gray", opacity=0.5)
 
         st.plotly_chart(fig, use_container_width=True)
         
         st.subheader("Play-by-Play Details")
-        st.dataframe(graph_df[['game_seconds_remaining', 'down', 'ydstogo', 'desc', 'team_wp']].sort_values('game_seconds_remaining', ascending=False))
+        graph_df.rename(columns={'desc': 'Play',
+                                  'game_seconds_remaining': 'Seconds Left',
+                                  'down': 'Down',
+                                  'ydstogo': 'Distance',
+                                  'team_wp': 'Win Probability'}, inplace=True)
+        st.dataframe(graph_df[['Seconds Left', 'Down', 'Distance', 'Play', 'Win Probability']].sort_values('Seconds Left', ascending=False))
 
     else:
         st.info("Please select a game from the sidebar to view Win Probability.")

@@ -93,7 +93,9 @@ def fetch_espn_pbp(event_id: str) -> PBPData:
     
     for drive in drives:
         for play in drive.get('plays', []):
-            posteam_id = str(play.get('start', {}).get('team', {}).get('id'))
+            if play.get('type').get('text') == 'Official Timeout':
+                continue
+            posteam_id = str(play.get('end', {}).get('team', {}).get('id'))
             
             play_row = {
                 'game_id': event_id,
