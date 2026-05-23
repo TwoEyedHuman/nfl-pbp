@@ -116,9 +116,14 @@ def fetch_espn_pbp(event_id: str) -> PBPData:
             all_plays.append(play_row)
             
     df = pd.DataFrame(all_plays)
-    
+
     # 4. Calculate score_diff (Now that posteam and home_team are strings)
     if not df.empty:
+        # ESPN scores are post-play; nflfastR training data uses pre-play scores.
+        # Shift by 1 so each play sees the score *entering* the play, matching training.
+        df['home_score'] = df['home_score'].shift(1).fillna(0).astype(int)
+        df['away_score'] = df['away_score'].shift(1).fillna(0).astype(int)
+
         df['score_diff'] = np.where(
             df['posteam'] == df['home_team'],
             df['home_score'] - df['away_score'],
