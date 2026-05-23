@@ -187,7 +187,7 @@ def main():
         primary_color = all_team_colors.get(selected_team, {}).get('team_color', '#247CE1')
         
         home_abbr = game_df['home_team'].iloc[0] if 'home_team' in game_df.columns else "Home"
-        away_abbr = game_df['away_team'].iloc[0] if 'away_team' in game_df.columns else "Away"
+        away_abbr = game_df['away_team'].iloc[0]
         vs_text = "v" if selected_team == home_abbr else "@"
         opponent_abbr = away_abbr if selected_team == home_abbr else home_abbr
         

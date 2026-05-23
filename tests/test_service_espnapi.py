@@ -97,6 +97,15 @@ class TestFetchEspnPbpStartFields(unittest.TestCase):
         valid = df["yardline_100"].between(1, 99)
         self.assertTrue(valid.all(), f"yardline_100 should be 1-99, got: {df['yardline_100'].tolist()}")
 
+    @patch("data_provider.service_espnapi.requests.get")
+    def test_away_team_present_and_non_null(self, mock_get):
+        mock_get.return_value = self._mock_response()
+        result = fetch_espn_pbp("test_event")
+        df = result.raw_df
+        self.assertIn("away_team", df.columns, "away_team column must be present")
+        self.assertFalse(df["away_team"].isnull().any(), "away_team must be non-null on every row")
+        self.assertTrue((df["away_team"] == "LV").all(), "away_team should be 'LV'")
+
 
 if __name__ == "__main__":
     unittest.main()

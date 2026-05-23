@@ -69,6 +69,8 @@ def fetch_espn_pbp(event_id: str) -> PBPData:
     home_team_info = next(c['team'] for c in competitors if c['homeAway'] == 'home')
     home_id = home_team_info.get('id')
     home_abbr = home_team_info.get('abbreviation')
+    away_team_info = next(c['team'] for c in competitors if c['homeAway'] == 'away')
+    away_abbr = away_team_info.get('abbreviation')
 
     # 2. Extract Team Metadata for the struct
     team_map = {}
@@ -107,8 +109,9 @@ def fetch_espn_pbp(event_id: str) -> PBPData:
                 'down': play.get('start', {}).get('down'),
                 'ydstogo': play.get('start', {}).get('distance'),
                 'yardline_100': play.get('start', {}).get('yardsToEndzone'),
-                'home_team': home_abbr, # Normalized string
-                'posteam': id_to_abbr.get(posteam_id) # Map ID to Abbr
+                'home_team': home_abbr,
+                'away_team': away_abbr,
+                'posteam': id_to_abbr.get(posteam_id)
             }
             all_plays.append(play_row)
             
