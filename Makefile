@@ -48,6 +48,11 @@ clean:
 	rm -rf `find . -name __pycache__`
 	rm -f $(MODEL_DIR)/*.pkl
 
+## test: Run all unit tests
+.PHONY: test
+test:
+	pipenv run python -m pytest tests/ -v
+
 ## shell: Enter the pipenv shell
 .PHONY: shell
 shell:

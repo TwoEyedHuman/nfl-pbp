@@ -15,6 +15,7 @@ xgboost = "*"
 pathlib = "*"
 plotly = "*"
 nflreadpy = "*"
+pyarrow = "*"
 
 [dev-packages]
 
