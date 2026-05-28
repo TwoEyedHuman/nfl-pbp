@@ -1,11 +1,39 @@
+import time
 import requests
 import pandas as pd
-from typing import Dict, List
+from typing import Any, Dict, List
 from .service_nflreadpy import PBPData
 import numpy as np
-import streamlit as st
 
 BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
+
+LIVE_TTL = 60
+COMPLETED_TTL = 300
+
+_cache: dict = {}  # {key: (data, timestamp)}
+_completed_keys: set = set()
+
+
+def _get_cached(key: str, ttl: float) -> Any | None:
+    entry = _cache.get(key)
+    if entry is None:
+        return None
+    data, timestamp = entry
+    if time.time() - timestamp < ttl:
+        return data
+    return None
+
+
+def _set_cached(key: str, data: Any) -> None:
+    _cache[key] = (data, time.time())
+
+
+def cache_age_seconds(key: str) -> float | None:
+    entry = _cache.get(key)
+    if entry is None:
+        return None
+    _, timestamp = entry
+    return time.time() - timestamp
 
 def calculate_seconds(play: dict) -> int:
     """
@@ -28,13 +56,17 @@ def calculate_seconds(play: dict) -> int:
         
     return max(0, game_seconds_remaining)
 
-@st.cache_data(ttl=3600)
 def get_scoreboard() -> List[Dict]:
+    key = "scoreboard"
+    cached = _get_cached(key, LIVE_TTL)
+    if cached is not None:
+        return cached
+
     url = f"{BASE_URL}/scoreboard"
     response = requests.get(url)
     response.raise_for_status()
     data = response.json()
-    
+
     events = []
     for event in data.get('events', []):
         events.append({
@@ -42,14 +74,21 @@ def get_scoreboard() -> List[Dict]:
             'name': event['name'],
             'shortName': event['shortName']
         })
+
+    _set_cached(key, events)
     return events
 
 # Custom error for game not started
 class GameNotStartedError(Exception):
     pass
 
-@st.cache_data(ttl=60)
 def fetch_espn_pbp(event_id: str) -> PBPData:
+    key = f"pbp_{event_id}"
+    ttl = COMPLETED_TTL if key in _completed_keys else LIVE_TTL
+    cached = _get_cached(key, ttl)
+    if cached is not None:
+        return cached
+
     url = f"{BASE_URL}/summary?event={event_id}"
     response = requests.get(url)
     response.raise_for_status()
@@ -130,8 +169,13 @@ def fetch_espn_pbp(event_id: str) -> PBPData:
             df['away_score'] - df['home_score']
         )
 
-    return PBPData(
+    result = PBPData(
         raw_df=df,
         team_map=team_map,
         color_map=color_map
     )
+
+    if game_status.startswith("STATUS_FINAL"):
+        _completed_keys.add(key)
+    _set_cached(key, result)
+    return result
