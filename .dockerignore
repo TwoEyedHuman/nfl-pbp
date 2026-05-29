@@ -1,0 +1,10 @@
+.git
+__pycache__
+**/__pycache__
+training/
+sample_data/
+tests/
+Issues
+Pipfile
+Pipfile.lock
+cache/*.parquet
