@@ -152,6 +152,21 @@ fly auth whoami
 
 ---
 
+## CI/CD
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+| Workflow | Trigger | Jobs |
+|----------|---------|------|
+| `deploy.yml` | Push to `main` | test → deploy (deploy blocked if test fails) |
+| `pr-check.yml` | Pull request | test only |
+
+**Required secret:** Add `FLY_API_TOKEN` to GitHub repository secrets (`Settings → Secrets → Actions`). Generate with `fly tokens create deploy -a nfl-win-probability`.
+
+**Before pushing after Pipfile changes:** run `make freeze` to sync `requirements.txt`, then commit both files. CI installs from `requirements.txt`.
+
+---
+
 ## Implementation Stories
 
 Stories are ordered by dependency. Each is scoped for a single Claude CLI session.
