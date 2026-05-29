@@ -1,7 +1,5 @@
 # Variables
 PYTHON = pipenv run python
-STREAMLIT = pipenv run streamlit run
-DASHBOARD = dashboard.py
 MODEL_DIR = models
 
 # Default target
@@ -15,6 +13,36 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@grep -E '^##' Makefile | sed -e 's/## //g' -e 's/: /:	/g'
+
+## freeze: Export dependencies to requirements.txt
+.PHONY: freeze
+freeze:
+	pipenv requirements > requirements.txt
+
+## dev: Start the Streamlit dashboard locally
+.PHONY: dev
+dev:
+	pipenv run streamlit run dashboard.py
+
+## build: Build the Docker image
+.PHONY: build
+build:
+	docker build -t nfl-win-probability .
+
+## run: Run the Docker container
+.PHONY: run
+run:
+	docker run -p 8501:8501 --env CACHE_DIR=/app/cache nfl-win-probability
+
+## down: Stop the Docker container
+.PHONY: down
+down:
+	docker stop $$(docker ps -q --filter ancestor=nfl-win-probability)
+
+## test: Run all unit tests
+.PHONY: test
+test:
+	pipenv run pytest tests/
 
 ## install: Install dependencies using pipenv
 .PHONY: install
@@ -37,21 +65,11 @@ train-gb:
 .PHONY: train-all
 train-all: train-lr train-gb
 
-## run: Start the Streamlit dashboard
-.PHONY: run
-run:
-	$(STREAMLIT) $(DASHBOARD)
-
 ## clean: Remove cached python files and model files
 .PHONY: clean
 clean:
 	rm -rf `find . -name __pycache__`
 	rm -f $(MODEL_DIR)/*.pkl
-
-## test: Run all unit tests
-.PHONY: test
-test:
-	pipenv run python -m pytest tests/ -v
 
 ## shell: Enter the pipenv shell
 .PHONY: shell

@@ -367,7 +367,7 @@ Stories are ordered by dependency. Each is scoped for a single Claude CLI sessio
 
 #### Story 3.1 — Streamlit Config & Makefile
 
-**Context:** Epic 2 complete. No `.streamlit/config.toml` yet.
+**Context:** No `.streamlit/config.toml` yet.
 
 **Tasks:**
 - `.streamlit/config.toml`:
