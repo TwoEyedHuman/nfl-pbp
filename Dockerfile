@@ -1,5 +1,5 @@
 # Builder: install deps into /install prefix, kept out of final image
-FROM python:3.12-slim AS builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 
 # Runner: minimal runtime image
-FROM python:3.12-slim AS runner
+FROM python:3.11-slim AS runner
 
 WORKDIR /app
 
