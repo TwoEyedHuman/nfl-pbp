@@ -98,6 +98,12 @@ def _fetch_nfl_data_raw(year: int) -> PBPData:
         'total_away_score': 'away_score'
     })
 
+    # Shift to pre-play scores within each game before computing score_diff.
+    # nflfastR stores post-play cumulative scores; shifting by 1 ensures the TD
+    # play sees the score *entering* the play, matching training convention.
+    df['home_score'] = df.groupby('game_id', sort=False)['home_score'].shift(1).fillna(0).astype(int)
+    df['away_score'] = df.groupby('game_id', sort=False)['away_score'].shift(1).fillna(0).astype(int)
+
     df['score_diff'] = np.where(
         df['posteam'] == df['home_team'],
         df['home_score'] - df['away_score'],

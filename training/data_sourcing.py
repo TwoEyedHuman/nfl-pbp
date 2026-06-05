@@ -9,6 +9,10 @@ cols = ['game_id', 'posteam', 'home_team', 'away_team', 'total_home_score',
 def load_training_data():
     pbp = nfl.load_pbp([2020,2021,2022,2023]).select(cols).to_pandas()
 
+    # Shift scores to pre-play within each game before filtering, so PAT/kickoff
+    # score updates propagate correctly to the next play with a down.
+    pbp['total_home_score'] = pbp.groupby('game_id', sort=False)['total_home_score'].shift(1).fillna(0).astype(int)
+    pbp['total_away_score'] = pbp.groupby('game_id', sort=False)['total_away_score'].shift(1).fillna(0).astype(int)
 
     # 2. Data Cleaning
     # Remove kickoffs, timeouts, and end of quarters (only keep plays with a 'down')
