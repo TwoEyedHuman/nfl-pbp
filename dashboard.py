@@ -171,6 +171,12 @@ def main():
             st.error("Data source failed to provide 'score_diff'.")
             st.stop()
 
+        game_df['score_diff'] = np.where(
+            game_df['posteam'] == game_df['home_team'],
+            game_df['home_score'] - game_df['away_score'],
+            game_df['away_score'] - game_df['home_score']
+        )
+
         # Inference Prep
         graph_df = game_df.dropna(subset=['down', 'posteam', 'score_diff']).copy()
         features = ['game_seconds_remaining', 'down', 'ydstogo', 'yardline_100', 'score_diff']
